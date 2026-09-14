@@ -538,7 +538,7 @@ mod tests {
             options.skip_attributes(true).unwrap();
             assert_eq!(
                 options.raw.flags,
-                original | crate::raw::GIT_MERGE_SKIP_ATTRIBUTES
+                original | crate::raw::GIT_MERGE_SKIP_ATTRIBUTES as u32
             );
         }
         options.skip_attributes(false).unwrap();
