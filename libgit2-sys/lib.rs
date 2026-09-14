@@ -1585,6 +1585,7 @@ git_enum! {
         GIT_MERGE_FAIL_ON_CONFLICT = 1 << 1,
         GIT_MERGE_SKIP_REUC = 1 << 2,
         GIT_MERGE_NO_RECURSIVE = 1 << 3,
+        GIT_MERGE_SKIP_ATTRIBUTES = 1 << 5,
     }
 }
 

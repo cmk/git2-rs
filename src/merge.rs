@@ -102,6 +102,22 @@ impl MergeOptions {
         self.flag(raw::GIT_MERGE_NO_RECURSIVE as u32, disable)
     }
 
+    /// Use the built-in merge driver without reading attributes or looking up
+    /// registered drivers, including during recursive merge-base construction.
+    /// File favor and binary-content detection still apply. This does not
+    /// suppress attribute use by a subsequent checkout or a custom metric.
+    ///
+    /// Enabling this option requires the bundled libgit2. A system library may
+    /// silently ignore the flag, so this returns an error when it is not vendored.
+    pub fn skip_attributes(&mut self, skip: bool) -> Result<&mut MergeOptions, Error> {
+        if skip && !raw::vendored() {
+            return Err(Error::from_str(
+                "skipping merge attributes requires the bundled libgit2",
+            ));
+        }
+        Ok(self.flag(raw::GIT_MERGE_SKIP_ATTRIBUTES as u32, skip))
+    }
+
     /// Similarity to consider a file renamed (default 50)
     pub fn rename_threshold(&mut self, thresh: u32) -> &mut MergeOptions {
         self.raw.rename_threshold = thresh;
@@ -510,6 +526,88 @@ mod tests {
     use crate::{MergeFileInput, MergeFileOptions};
 
     use std::path::Path;
+
+    #[test]
+    fn skip_attributes_is_checked_and_reversible() {
+        let mut options = super::MergeOptions::new();
+        let original = options.raw.flags;
+        if !crate::Version::get().vendored() {
+            assert!(options.skip_attributes(true).is_err());
+            assert_eq!(options.raw.flags, original);
+        } else {
+            options.skip_attributes(true).unwrap();
+            assert_eq!(
+                options.raw.flags,
+                original | crate::raw::GIT_MERGE_SKIP_ATTRIBUTES
+            );
+        }
+        options.skip_attributes(false).unwrap();
+        assert_eq!(options.raw.flags, original);
+    }
+
+    #[test]
+    fn skip_attributes_preserves_conflicts_and_isolates_operations() {
+        if !crate::Version::get().vendored() {
+            return;
+        }
+        std::thread::scope(|scope| {
+            for initial_skip in [false, true] {
+                scope.spawn(move || {
+                    let temp = tempfile::tempdir().unwrap();
+                    let repo = crate::Repository::init_bare(temp.path()).unwrap();
+                    let config_path = temp.path().join("config");
+                    repo.set_config(&crate::Config::open(&config_path).unwrap())
+                        .unwrap();
+                    std::fs::create_dir_all(temp.path().join("info")).unwrap();
+                    std::fs::write(
+                        temp.path().join("info/attributes"),
+                        "[attr]chooseunion merge=union\n* chooseunion\n",
+                    )
+                    .unwrap();
+                    let signature = crate::Signature::now("test", "test@example.invalid").unwrap();
+                    let commit = |content: &[u8], parents: &[&crate::Commit<'_>]| {
+                        let mut builder = repo.treebuilder(None).unwrap();
+                        builder
+                            .insert("file.txt", repo.blob(content).unwrap(), 0o100644)
+                            .unwrap();
+                        let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+                        repo.commit(None, &signature, &signature, "fixture", &tree, parents)
+                            .unwrap()
+                    };
+                    let base = repo.find_commit(commit(b"base\n", &[])).unwrap();
+                    let ours = repo.find_commit(commit(b"ours\n", &[&base])).unwrap();
+                    let theirs = repo.find_commit(commit(b"theirs\n", &[&base])).unwrap();
+                    for skip in [initial_skip, !initial_skip, initial_skip] {
+                        let mut options = super::MergeOptions::new();
+                        options.skip_attributes(skip).unwrap();
+                        let index = repo.merge_commits(&ours, &theirs, Some(&options)).unwrap();
+                        assert_eq!(index.has_conflicts(), skip);
+                        if skip {
+                            let conflict = index.conflicts().unwrap().next().unwrap().unwrap();
+                            assert_eq!(
+                                conflict.ancestor.unwrap().id,
+                                base.tree().unwrap().get_name("file.txt").unwrap().id()
+                            );
+                            assert_eq!(
+                                conflict.our.unwrap().id,
+                                ours.tree().unwrap().get_name("file.txt").unwrap().id()
+                            );
+                            assert_eq!(
+                                conflict.their.unwrap().id,
+                                theirs.tree().unwrap().get_name("file.txt").unwrap().id()
+                            );
+                        } else {
+                            let entry = index.get_path(Path::new("file.txt"), 0).unwrap();
+                            assert_eq!(
+                                repo.find_blob(entry.id).unwrap().content(),
+                                b"ours\ntheirs\n"
+                            );
+                        }
+                    }
+                });
+            }
+        });
+    }
 
     #[test]
     fn smoke_merge_file() {

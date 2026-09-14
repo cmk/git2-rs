@@ -3,9 +3,15 @@ use std::path::PathBuf;
 
 fn main() {
     let mut cfg = ctest2::TestGenerator::new();
+    let vendored =
+        env::var("DEP_GIT2_VENDORED").expect("libgit2-sys must report its selected linkage") == "1";
     if let Some(root) = env::var_os("DEP_GIT2_ROOT") {
-        cfg.include(PathBuf::from(root).join("include"));
+        let root = PathBuf::from(root);
+        cfg.include(if vendored { root.join("include") } else { root });
     }
+    // Stock system headers do not declare this fork's optional flag. The safe
+    // Rust setter rejects that linkage; bundled builds must check the constant.
+    cfg.skip_const(move |name| !vendored && name == "GIT_MERGE_SKIP_ATTRIBUTES");
 
     // Enable the unstable-sha256 rust cfg
     // so ctest2 sees the correct function signatures

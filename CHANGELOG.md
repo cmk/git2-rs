@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+* Add `MergeOptions::skip_attributes` for the bundled native merge option.
+  It bypasses attribute and driver-registry lookup during merge computation,
+  including recursive merge bases, and rejects activation on system libgit2.
+
 ## 0.21.0 - TBD
 [0.20.4...main](https://github.com/rust-lang/git2-rs/compare/git2-0.20.4...main)
 

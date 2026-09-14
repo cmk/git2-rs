@@ -68,6 +68,7 @@ fn try_system_libgit2(
         }
     };
 
+    println!("cargo:vendored=0");
     for include in &lib.include_paths {
         println!("cargo:root={}", include.display());
     }
@@ -117,6 +118,7 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
     }
 
     println!("cargo:rustc-cfg=libgit2_vendored");
+    println!("cargo:vendored=1");
 
     if !Path::new("libgit2/src").exists() {
         let _ = Command::new("git")
