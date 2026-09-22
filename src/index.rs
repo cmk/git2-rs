@@ -10,7 +10,9 @@ use libc::{c_char, c_int, c_uint, c_void, size_t};
 use crate::util::{self, path_to_repo_path, Binding};
 use crate::IntoCString;
 use crate::ObjectFormat;
-use crate::{panic, raw, Error, IndexAddOption, IndexTime, Oid, Repository, Tree};
+use crate::{
+    panic, raw, Error, IndexAddOption, IndexCapabilities, IndexTime, Oid, Repository, Tree,
+};
 
 /// A structure to represent a git [index][1]
 ///
@@ -159,6 +161,29 @@ impl Index {
             }
             Ok(Binding::from_raw(raw))
         }
+    }
+
+    /// Get the index's current cached capabilities.
+    pub fn caps(&self) -> IndexCapabilities {
+        unsafe { IndexCapabilities::from_bits_truncate(raw::git_index_caps(self.raw) as u32) }
+    }
+
+    /// Replace the index's capabilities without reading repository configuration.
+    ///
+    /// Changing case sensitivity also updates native path sorting and lookup.
+    /// This changes the in-memory index, including other handles to the same
+    /// repository index; it does not write the index or repository configuration.
+    /// Read [`Index::caps`] and change only the desired flags to preserve others.
+    pub fn set_caps(&mut self, caps: IndexCapabilities) -> Result<(), Error> {
+        unsafe {
+            // Only explicit capability bits are forwarded. In particular,
+            // unknown retained bits cannot select native FROM_OWNER (-1).
+            try_call!(raw::git_index_set_caps(
+                self.raw,
+                (caps & IndexCapabilities::all()).bits() as c_int
+            ));
+        }
+        Ok(())
     }
 
     /// Get index on-disk version.
@@ -902,6 +927,44 @@ mod tests {
         assert!(index.get(0).is_none());
         assert!(index.path().is_none());
         assert!(index.read(true).is_err());
+    }
+
+    #[test]
+    fn capabilities_roundtrip_and_native_lookup() {
+        use crate::IndexCapabilities;
+        let mut index = Index::new().unwrap();
+        for path in [b"a", b"B", b"z"] {
+            let mut value = entry();
+            value.path = path.to_vec();
+            index.add(&value).unwrap();
+        }
+        // Exhaust every explicit capability combination and every transition.
+        for before in 0..=IndexCapabilities::all().bits() {
+            for after in 0..=IndexCapabilities::all().bits() {
+                for bits in [before, after, before] {
+                    let caps = IndexCapabilities::from_bits(bits).unwrap();
+                    index.set_caps(caps).unwrap();
+                    assert_eq!(index.caps(), caps);
+                    let insensitive = caps.contains(IndexCapabilities::IGNORE_CASE);
+                    assert_eq!(index.get_path(Path::new("A"), 0).is_some(), insensitive);
+                    assert_eq!(index.get_path(Path::new("b"), 0).is_some(), insensitive);
+                    assert!(index.get_path(Path::new("a"), 0).is_some());
+                    assert!(index.get_path(Path::new("missing"), 0).is_none());
+                    let paths: Vec<_> = index.iter().map(|entry| entry.path).collect();
+                    let expected = if insensitive {
+                        [b"a", b"B", b"z"]
+                    } else {
+                        [b"B", b"a", b"z"]
+                    };
+                    assert_eq!(paths, expected);
+                }
+            }
+        }
+        // Even bitflags with unknown bits never request repository defaults.
+        index
+            .set_caps(IndexCapabilities::from_bits_retain(u32::MAX))
+            .unwrap();
+        assert_eq!(index.caps(), IndexCapabilities::all());
     }
 
     #[test]

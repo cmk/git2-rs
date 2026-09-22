@@ -1134,6 +1134,15 @@ pub type git_tag_foreach_cb =
     Option<extern "C" fn(name: *const c_char, oid: *mut git_oid, payload: *mut c_void) -> c_int>;
 
 git_enum! {
+    pub enum git_index_capability_t: c_int {
+        GIT_INDEX_CAPABILITY_IGNORE_CASE = 1,
+        GIT_INDEX_CAPABILITY_NO_FILEMODE = 2,
+        GIT_INDEX_CAPABILITY_NO_SYMLINKS = 4,
+        GIT_INDEX_CAPABILITY_FROM_OWNER = -1,
+    }
+}
+
+git_enum! {
     pub enum git_index_add_option_t {
         GIT_INDEX_ADD_DEFAULT = 0,
         GIT_INDEX_ADD_FORCE = 1 << 0,
@@ -3302,6 +3311,8 @@ extern "C" {
     ) -> c_int;
 
     // index
+    pub fn git_index_caps(index: *const git_index) -> c_int;
+    pub fn git_index_set_caps(index: *mut git_index, caps: c_int) -> c_int;
     pub fn git_index_version(index: *mut git_index) -> c_uint;
     pub fn git_index_set_version(index: *mut git_index, version: c_uint) -> c_int;
     pub fn git_index_add(index: *mut git_index, entry: *const git_index_entry) -> c_int;

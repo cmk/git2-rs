@@ -507,6 +507,23 @@ impl Default for CredentialType {
 }
 
 bitflags! {
+    /// Explicit capabilities of an in-memory index.
+    ///
+    /// These are the index's current cached settings, which can differ from
+    /// its repository's configuration. Empty flags enable case-sensitive
+    /// lookup, executable-bit checks, and symbolic links.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
+    pub struct IndexCapabilities: u32 {
+        /// Match index paths without regard to case.
+        const IGNORE_CASE = raw::GIT_INDEX_CAPABILITY_IGNORE_CASE as u32;
+        /// Ignore differences in the executable bit.
+        const NO_FILEMODE = raw::GIT_INDEX_CAPABILITY_NO_FILEMODE as u32;
+        /// Treat symbolic links as ordinary files.
+        const NO_SYMLINKS = raw::GIT_INDEX_CAPABILITY_NO_SYMLINKS as u32;
+    }
+}
+
+bitflags! {
     /// Flags for the `flags` field of an IndexEntry.
     #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
     pub struct IndexEntryFlag: u16 {
