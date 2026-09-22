@@ -157,6 +157,7 @@ pub enum git_refdb {}
 pub enum git_refspec {}
 pub enum git_remote {}
 pub enum git_repository {}
+pub enum git_ignore_source {}
 pub enum git_revwalk {}
 pub enum git_submodule {}
 pub enum git_tag {}
@@ -2446,6 +2447,22 @@ extern "C" {
         payload: *mut c_void,
     ) -> c_int;
     pub fn git_ignore_add_rule(repo: *mut git_repository, rules: *const c_char) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_ignore_source_new(
+        out: *mut *mut git_ignore_source,
+        repo: *mut git_repository,
+        source_path: *const c_char,
+        data: *const c_void,
+        len: size_t,
+    ) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_ignore_source_path_is_ignored(
+        ignored: *mut c_int,
+        source: *mut git_ignore_source,
+        path: *const c_char,
+    ) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_ignore_source_free(source: *mut git_ignore_source);
     pub fn git_ignore_clear_internal_rules(repo: *mut git_repository) -> c_int;
     pub fn git_ignore_path_is_ignored(
         ignored: *mut c_int,
@@ -4768,6 +4785,46 @@ fn ssh_init() {}
 pub fn vendored() -> bool {
     cfg!(libgit2_vendored)
 }
+
+// No fork symbols may reach a stock-library link. Safe callers reject this
+// linkage before construction; raw callers still receive an explicit error.
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_ignore_source_new(
+    out: *mut *mut git_ignore_source,
+    _repo: *mut git_repository,
+    _source_path: *const c_char,
+    _data: *const c_void,
+    _len: size_t,
+) -> c_int {
+    if !out.is_null() {
+        *out = std::ptr::null_mut();
+    }
+    git_error_set_str(
+        GIT_ERROR_INVALID as c_int,
+        b"captured ignore sources require bundled libgit2\0"
+            .as_ptr()
+            .cast(),
+    );
+    -1
+}
+
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_ignore_source_path_is_ignored(
+    _ignored: *mut c_int,
+    _source: *mut git_ignore_source,
+    _path: *const c_char,
+) -> c_int {
+    git_error_set_str(
+        GIT_ERROR_INVALID as c_int,
+        b"captured ignore sources require bundled libgit2\0"
+            .as_ptr()
+            .cast(),
+    );
+    -1
+}
+
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_ignore_source_free(_source: *mut git_ignore_source) {}
 
 #[doc(hidden)]
 pub fn experimental_features() -> Vec<&'static str> {

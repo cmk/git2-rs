@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Add `IgnoreSource` for operation-local captured global ignore bytes with
+  native source-path context and precedence. System linkage refuses it.
+
 * Add `MergeOptions::skip_attributes` for the bundled native merge option.
   It bypasses attribute and driver-registry lookup during merge computation,
   including recursive merge bases, and rejects activation on system libgit2.

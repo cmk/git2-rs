@@ -12,6 +12,10 @@ fn main() {
     // Stock system headers do not declare this fork's optional flag. The safe
     // Rust setter rejects that linkage; bundled builds must check the constant.
     cfg.skip_const(move |name| !vendored && name == "GIT_MERGE_SKIP_ATTRIBUTES");
+    if vendored {
+        cfg.cfg("libgit2_vendored", None);
+    }
+    cfg.skip_fn(move |name| !vendored && name.starts_with("git_ignore_source_"));
 
     // Enable the unstable-sha256 rust cfg
     // so ctest2 sees the correct function signatures
@@ -56,6 +60,6 @@ fn main() {
     // not entirely sure why this is failing...
     cfg.skip_roundtrip(|t| t == "git_clone_options" || t == "git_submodule_update_options");
 
-    cfg.skip_type(|t| t == "__enum_ty");
+    cfg.skip_type(move |t| t == "__enum_ty" || (!vendored && t == "git_ignore_source"));
     cfg.generate("../libgit2-sys/lib.rs", "all.rs");
 }

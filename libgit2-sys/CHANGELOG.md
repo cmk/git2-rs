@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+* Bind the bundled native captured-ignore-source API. Stock system linkage
+  reports unsupported functionality without referencing fork-only symbols.
+
 ## 0.18.5+1.9.4 - 2026-05-23
 [0.18.4...0.18.5](https://github.com/rust-lang/git2-rs/compare/libgit2-sys-0.18.4+1.9.3...libgit2-sys-0.18.5+1.9.4)
 
