@@ -2399,6 +2399,12 @@ extern "C" {
     pub fn git_repository_is_empty(repo: *mut git_repository) -> c_int;
     pub fn git_repository_is_shallow(repo: *mut git_repository) -> c_int;
     pub fn git_repository_path(repo: *const git_repository) -> *const c_char;
+    #[cfg(libgit2_vendored)]
+    pub fn git_repository_precompose_workdir_path(
+        out: *mut git_buf,
+        repo: *mut git_repository,
+        path: *const c_char,
+    ) -> c_int;
     pub fn git_repository_commondir(repo: *const git_repository) -> *const c_char;
     pub fn git_repository_state(repo: *mut git_repository) -> c_int;
     pub fn git_repository_workdir(repo: *const git_repository) -> *const c_char;
@@ -4788,6 +4794,21 @@ pub fn vendored() -> bool {
 
 // No fork symbols may reach a stock-library link. Safe callers reject this
 // linkage before construction; raw callers still receive an explicit error.
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_repository_precompose_workdir_path(
+    _out: *mut git_buf,
+    _repo: *mut git_repository,
+    _path: *const c_char,
+) -> c_int {
+    git_error_set_str(
+        GIT_ERROR_INVALID as c_int,
+        b"native path precomposition requires bundled libgit2\0"
+            .as_ptr()
+            .cast(),
+    );
+    -1
+}
+
 #[cfg(not(libgit2_vendored))]
 pub unsafe fn git_ignore_source_new(
     out: *mut *mut git_ignore_source,

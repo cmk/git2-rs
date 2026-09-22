@@ -577,6 +577,29 @@ impl Repository {
         }
     }
 
+    /// Apply the native workdir iterator's filename precomposition.
+    ///
+    /// Uses `core.precomposeUnicode` and libgit2's native encoding converter,
+    /// preserving bytes when disabled or undecodable. Does not canonicalize,
+    /// validate, case-fold or access the path. Stock system linkage refuses.
+    pub fn precompose_workdir_path(&self, path: &Path) -> Result<PathBuf, Error> {
+        if !raw::vendored() {
+            return Err(Error::from_str(
+                "native path precomposition requires bundled libgit2",
+            ));
+        }
+        let path = util::cstring_to_repo_path(path)?;
+        let buf = Buf::new();
+        unsafe {
+            try_call!(raw::git_repository_precompose_workdir_path(
+                buf.raw(),
+                self.raw(),
+                path
+            ));
+        }
+        Ok(util::bytes2path(&buf).to_owned())
+    }
+
     /// Retrieves the Git merge message.
     /// Remember to remove the message when finished.
     pub fn message(&self) -> Result<String, Error> {
@@ -3734,6 +3757,76 @@ mod tests {
         assert!(repo.is_bare());
         assert!(repo.namespace().expect("Okay even if none").is_none());
         assert_eq!(repo.object_format(), ObjectFormat::Sha256);
+    }
+
+    #[test]
+    fn precompose_workdir_path_matches_native_status() {
+        for enabled in [false, true] {
+            let td = TempDir::new().unwrap();
+            let repo = Repository::init(td.path()).unwrap();
+            repo.config()
+                .unwrap()
+                .set_bool("core.precomposeUnicode", enabled)
+                .unwrap();
+            repo.config()
+                .unwrap()
+                .set_str("core.excludesFile", "")
+                .unwrap();
+            if !raw::vendored() {
+                assert!(repo.precompose_workdir_path(Path::new("name")).is_err());
+                continue;
+            }
+            for name in ["plain", "cafe\u{301}", "\u{212b}", "\u{1100}\u{1161}"] {
+                std::fs::write(td.path().join(name), b"file").unwrap();
+            }
+            let repo = Repository::open(td.path()).unwrap();
+            let mut converted = std::fs::read_dir(td.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .filter(|name| name != ".git")
+                .map(|name| repo.precompose_workdir_path(Path::new(&name)).unwrap())
+                .collect::<Vec<_>>();
+            let mut options = crate::StatusOptions::new();
+            options
+                .show(crate::StatusShow::Workdir)
+                .include_untracked(true);
+            let statuses = repo.statuses(Some(&mut options)).unwrap();
+            let mut native = statuses
+                .iter()
+                .map(|entry| crate::util::bytes2path(entry.path_bytes()).to_owned())
+                .collect::<Vec<_>>();
+            converted.sort();
+            native.sort();
+            assert_eq!(converted, native, "precompose={enabled}");
+            assert!(repo
+                .precompose_workdir_path(Path::new("nul\0path"))
+                .is_err());
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn precompose_workdir_path_preserves_undecodable_components() {
+        use std::os::unix::ffi::OsStrExt;
+        let td = TempDir::new().unwrap();
+        let repo = Repository::init(td.path()).unwrap();
+        if !raw::vendored() {
+            return;
+        }
+        repo.config()
+            .unwrap()
+            .set_bool("core.precomposeUnicode", true)
+            .unwrap();
+        let repo = Repository::open(td.path()).unwrap();
+        let parent = Path::new("cafe\u{301}");
+        let invalid = std::ffi::OsStr::from_bytes(b"bad-\xff");
+        let nested = parent.join(invalid).join("cafe\u{301}");
+        let expected = repo
+            .precompose_workdir_path(parent)
+            .unwrap()
+            .join(invalid)
+            .join(repo.precompose_workdir_path(parent).unwrap());
+        assert_eq!(repo.precompose_workdir_path(&nested).unwrap(), expected);
     }
 
     #[test]

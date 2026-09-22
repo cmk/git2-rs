@@ -15,7 +15,11 @@ fn main() {
     if vendored {
         cfg.cfg("libgit2_vendored", None);
     }
-    cfg.skip_fn(move |name| !vendored && name.starts_with("git_ignore_source_"));
+    cfg.skip_fn(move |name| {
+        !vendored
+            && (name.starts_with("git_ignore_source_")
+                || name == "git_repository_precompose_workdir_path")
+    });
 
     // Enable the unstable-sha256 rust cfg
     // so ctest2 sees the correct function signatures
