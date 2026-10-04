@@ -2350,6 +2350,11 @@ extern "C" {
     ) -> c_int;
     pub fn git_repository_free(repo: *mut git_repository);
     pub fn git_repository_open(repo: *mut *mut git_repository, path: *const c_char) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_repository_open_gitdir_preserving_path(
+        out: *mut *mut git_repository,
+        path: *const c_char,
+    ) -> c_int;
     pub fn git_repository_open_bare(repo: *mut *mut git_repository, path: *const c_char) -> c_int;
     pub fn git_repository_open_ext(
         repo: *mut *mut git_repository,
@@ -4794,6 +4799,23 @@ pub fn vendored() -> bool {
 
 // No fork symbols may reach a stock-library link. Safe callers reject this
 // linkage before construction; raw callers still receive an explicit error.
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_repository_open_gitdir_preserving_path(
+    out: *mut *mut git_repository,
+    _path: *const c_char,
+) -> c_int {
+    if !out.is_null() {
+        *out = std::ptr::null_mut();
+    }
+    git_error_set_str(
+        GIT_ERROR_INVALID as c_int,
+        b"retained Git-directory paths require bundled libgit2\0"
+            .as_ptr()
+            .cast(),
+    );
+    -1
+}
+
 #[cfg(not(libgit2_vendored))]
 pub unsafe fn git_repository_precompose_workdir_path(
     _out: *mut git_buf,

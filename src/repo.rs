@@ -142,6 +142,30 @@ impl Repository {
         }
     }
 
+    /// Open an already-selected absolute Git directory, retaining symlink
+    /// spelling for conditional configuration.
+    ///
+    /// This does not discover a worktree, follow a worktree gitfile, or search
+    /// parents. Normal native validation and configuration loading still apply.
+    /// It does not pin filesystem identity or detect concurrent path changes.
+    /// Requires this fork's bundled libgit2; system linkage returns an error.
+    pub fn open_gitdir_preserving_path<P: AsRef<Path>>(path: P) -> Result<Repository, Error> {
+        if !raw::vendored() {
+            return Err(Error::from_str(
+                "retained Git-directory paths require bundled libgit2",
+            ));
+        }
+        crate::init();
+        let path = path.as_ref().into_c_string()?;
+        let mut ret = ptr::null_mut();
+        unsafe {
+            try_call!(raw::git_repository_open_gitdir_preserving_path(
+                &mut ret, path
+            ));
+            Ok(Binding::from_raw(ret))
+        }
+    }
+
     /// Attempt to open an already-existing bare repository at `path`.
     ///
     /// The path can point to only a bare repository.
@@ -3972,6 +3996,82 @@ mod tests {
     fn makes_dirs() {
         let td = TempDir::new().unwrap();
         Repository::init(&td.path().join("a/b/c/d")).unwrap();
+    }
+
+    #[test]
+    fn retained_gitdir_is_not_discovery() {
+        let (td, repo) = crate::test::repo_init();
+        let result = Repository::open_gitdir_preserving_path(repo.path());
+        if !raw::vendored() {
+            assert!(result.err().unwrap().message().contains("bundled libgit2"));
+            return;
+        }
+        assert_eq!(result.unwrap().path(), repo.path());
+        assert!(Repository::open_gitdir_preserving_path(".").is_err());
+        assert!(Repository::open_gitdir_preserving_path(td.path()).is_err());
+        assert!(Repository::open_gitdir_preserving_path(repo.path().join("HEAD")).is_err());
+        assert!(Repository::open_gitdir_preserving_path("nul\0path").is_err());
+
+        let linked = td.path().join("linked");
+        let worktree = repo.worktree("linked", &linked, None).unwrap();
+        let native = Repository::open_from_worktree(&worktree).unwrap();
+        let retained = native.path().to_owned();
+        assert!(Repository::open_gitdir_preserving_path(linked.join(".git")).is_err());
+        // A redirected worktree marker cannot change direct-directory opening.
+        fs::write(linked.join(".git"), "gitdir: missing\n").unwrap();
+        let opened = Repository::open_gitdir_preserving_path(&retained).unwrap();
+        assert_eq!(opened.path(), retained);
+        assert_eq!(
+            opened.head().unwrap().target(),
+            native.head().unwrap().target()
+        );
+        assert_eq!(opened.workdir(), native.workdir());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn retained_gitdir_preserves_conditional_selection() {
+        if !raw::vendored() {
+            return;
+        }
+        let (td, repo) = crate::test::repo_init();
+        let spelling: std::path::PathBuf = repo.path().components().collect();
+        let root = td.path().canonicalize().unwrap();
+        let target = root.join("admin.git");
+        drop(repo);
+        fs::rename(&spelling, &target).unwrap();
+        std::os::unix::fs::symlink(&target, &spelling).unwrap();
+        fs::write(target.join("selected"), "[marker]\n value=true\n").unwrap();
+        let prior = fs::read_to_string(target.join("config")).unwrap();
+        for (pattern, retained_selected, ordinary_selected) in [
+            (spelling.as_path(), true, false),
+            (target.as_path(), false, true),
+        ] {
+            fs::write(
+                target.join("config"),
+                format!(
+                    "{prior}\n[includeIf \"gitdir:{}\"]\n path=selected\n",
+                    pattern.display().to_string().trim_end_matches('/')
+                ),
+            )
+            .unwrap();
+            let retained = Repository::open_gitdir_preserving_path(&spelling).unwrap();
+            let ordinary = Repository::open(&spelling).unwrap();
+            assert_eq!(retained.path(), spelling);
+            assert_eq!(
+                retained.config().unwrap().get_bool("marker.value").is_ok(),
+                retained_selected
+            );
+            assert_eq!(
+                ordinary.config().unwrap().get_bool("marker.value").is_ok(),
+                ordinary_selected
+            );
+            assert_eq!(
+                retained.head().unwrap().target(),
+                ordinary.head().unwrap().target()
+            );
+            assert_eq!(retained.workdir(), ordinary.workdir());
+        }
     }
 
     #[test]
