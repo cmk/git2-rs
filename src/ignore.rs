@@ -82,8 +82,20 @@ mod tests {
             return;
         }
         std::fs::create_dir(root.join("sub")).unwrap();
+        let workdir = repo.workdir().unwrap();
+        let alias = workdir
+            .parent()
+            .unwrap()
+            .join(".")
+            .join(workdir.file_name().unwrap());
         for origin in ["sub/.gitignore", "sub/rules", "rules"] {
             let path = root.join(origin);
+            let sources = [
+                Path::new(origin).to_path_buf(),
+                workdir.join(origin),
+                path.clone(),
+                alias.join(origin),
+            ];
             for bytes in [
                 b"/root-only\n".as_slice(),
                 b"\xef\xbb\xbf/root-only\r\n".as_slice(),
@@ -98,13 +110,16 @@ mod tests {
                         .unwrap()
                         .set_bool("core.ignoreCase", case)
                         .unwrap();
-                    repo.config()
-                        .unwrap()
-                        .set_str("core.excludesFile", path.to_str().unwrap())
-                        .unwrap();
-                    let native = Repository::open(&root).unwrap();
-                    // Absolute and workdir-relative origins have identical context.
-                    for selected in [Path::new(origin), path.as_path()] {
+                    for selected in &sources {
+                        // Ignore scope depends on the source spelling, not just
+                        // file identity. Give the oracle the same slash-normalized
+                        // pathname as the safe wrapper, including Windows prefixes.
+                        let configured = util::cstring_to_repo_path(selected.as_path()).unwrap();
+                        repo.config()
+                            .unwrap()
+                            .set_str("core.excludesFile", configured.to_str().unwrap())
+                            .unwrap();
+                        let native = Repository::open(&root).unwrap();
                         let captured = IgnoreSource::new(&native, selected, bytes).unwrap();
                         for name in [
                             "root-only",
@@ -117,7 +132,7 @@ mod tests {
                             assert_eq!(
                                 captured.is_path_ignored(Path::new(name)).unwrap(),
                                 native.is_path_ignored(name).unwrap(),
-                                "{origin}: {name}, {bytes:?}, case={case}"
+                                "{selected:?}: {name}, {bytes:?}, case={case}"
                             );
                         }
                     }
