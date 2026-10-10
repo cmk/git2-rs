@@ -81,6 +81,7 @@ use std::sync::Once;
 
 pub use crate::apply::{ApplyLocation, ApplyOptions};
 pub use crate::attr::AttrValue;
+pub use crate::attribute_session::{AttributeReadSession, AttributeSource, OwnedAttrValue};
 pub use crate::blame::{Blame, BlameHunk, BlameIter, BlameOptions};
 pub use crate::blob::{Blob, BlobWriter};
 pub use crate::branch::{Branch, Branches};
@@ -729,6 +730,7 @@ pub mod string_array;
 pub mod transport;
 
 mod apply;
+mod attribute_session;
 mod blame;
 mod blob;
 mod branch;

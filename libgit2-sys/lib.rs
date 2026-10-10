@@ -80,6 +80,7 @@ macro_rules! git_enum {
 }
 
 pub enum git_blob {}
+pub enum git_attr_read_session {}
 pub enum git_branch_iterator {}
 pub enum git_blame {}
 pub enum git_commit {}
@@ -2402,6 +2403,23 @@ extern "C" {
     pub fn git_repository_is_worktree(repo: *const git_repository) -> c_int;
     pub fn git_repository_is_bare(repo: *const git_repository) -> c_int;
     pub fn git_repository_is_empty(repo: *mut git_repository) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_attr_read_session_new(
+        out: *mut *mut git_attr_read_session,
+        repo: *mut git_repository,
+        system_file: *const c_char,
+        flags: u32,
+    ) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_attr_read_session_get(
+        value: *mut *const c_char,
+        session: *mut git_attr_read_session,
+        path: *const c_char,
+        is_dir: c_int,
+        name: *const c_char,
+    ) -> c_int;
+    #[cfg(libgit2_vendored)]
+    pub fn git_attr_read_session_free(session: *mut git_attr_read_session);
     pub fn git_repository_is_shallow(repo: *mut git_repository) -> c_int;
     pub fn git_repository_path(repo: *const git_repository) -> *const c_char;
     #[cfg(libgit2_vendored)]
@@ -4799,6 +4817,48 @@ pub fn vendored() -> bool {
 
 // No fork symbols may reach a stock-library link. Safe callers reject this
 // linkage before construction; raw callers still receive an explicit error.
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_attr_read_session_new(
+    out: *mut *mut git_attr_read_session,
+    _repo: *mut git_repository,
+    _system_file: *const c_char,
+    _flags: u32,
+) -> c_int {
+    if !out.is_null() {
+        *out = std::ptr::null_mut();
+    }
+    git_error_set_str(
+        GIT_ERROR_INVALID as c_int,
+        b"attribute read sessions require bundled libgit2\0"
+            .as_ptr()
+            .cast(),
+    );
+    -1
+}
+
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_attr_read_session_get(
+    value: *mut *const c_char,
+    _session: *mut git_attr_read_session,
+    _path: *const c_char,
+    _is_dir: c_int,
+    _name: *const c_char,
+) -> c_int {
+    if !value.is_null() {
+        *value = std::ptr::null();
+    }
+    git_error_set_str(
+        GIT_ERROR_INVALID as c_int,
+        b"attribute read sessions require bundled libgit2\0"
+            .as_ptr()
+            .cast(),
+    );
+    -1
+}
+
+#[cfg(not(libgit2_vendored))]
+pub unsafe fn git_attr_read_session_free(_session: *mut git_attr_read_session) {}
+
 #[cfg(not(libgit2_vendored))]
 pub unsafe fn git_repository_open_gitdir_preserving_path(
     out: *mut *mut git_repository,

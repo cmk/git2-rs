@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 fn main() {
     let mut cfg = ctest2::TestGenerator::new();
+    cfg.include(".").header("abi.h");
+    println!("cargo:rerun-if-changed=abi.h");
     let vendored =
         env::var("DEP_GIT2_VENDORED").expect("libgit2-sys must report its selected linkage") == "1";
     if let Some(root) = env::var_os("DEP_GIT2_ROOT") {
@@ -18,6 +20,7 @@ fn main() {
     cfg.skip_fn(move |name| {
         !vendored
             && (name.starts_with("git_ignore_source_")
+                || name.starts_with("git_attr_read_session_")
                 || name == "git_repository_precompose_workdir_path"
                 || name == "git_repository_open_gitdir_preserving_path")
     });
@@ -65,6 +68,9 @@ fn main() {
     // not entirely sure why this is failing...
     cfg.skip_roundtrip(|t| t == "git_clone_options" || t == "git_submodule_update_options");
 
-    cfg.skip_type(move |t| t == "__enum_ty" || (!vendored && t == "git_ignore_source"));
+    cfg.skip_type(move |t| {
+        t == "__enum_ty"
+            || (!vendored && matches!(t, "git_ignore_source" | "git_attr_read_session"))
+    });
     cfg.generate("../libgit2-sys/lib.rs", "all.rs");
 }
