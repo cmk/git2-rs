@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Add bundled-only `AttributeReadSession` with explicit system-source selection,
+  captured directory-kind queries, exclusive cache ownership and owned values.
+
 * Add `IgnoreSource` for operation-local captured global ignore bytes with
   native source-path context and precedence. System linkage refuses it.
 
