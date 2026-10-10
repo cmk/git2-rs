@@ -8,6 +8,7 @@ jobs:
     name: Test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         build: [stable, beta, nightly, macos, windows]
         include:
@@ -34,6 +35,10 @@ jobs:
       run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
       shell: bash
     - run: cargo test --locked
+    - name: Test bundled attribute sessions
+      if: success() || failure()
+      timeout-minutes: 10
+      run: cargo test --locked -p git2 --no-default-features --features vendored-libgit2 --test attribute_session --test attribute_session_linux
     - run: cargo test --features https,ssh
     # Single-threaded: libgit2's builtin SHA256 is not thread-safe.
     # See https://github.com/rust-lang/git2-rs/issues/1255.
